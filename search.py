@@ -4,13 +4,20 @@ import json
 import random
 from datetime import datetime
 from pathlib import Path
+from typing import List, Dict, Any
 from twikit.errors import NotFound, TooManyRequests
+import logging
 
-async def search(client, query: str, count: int = 10, product: str = 'Top', retry_wait: int = 900):
+from utils import safe_filename
+
+logger = logging.getLogger(__name__)
+
+async def search(client, query: str, count: int = 10, product: str = 'Top', retry_wait: int = 900) -> List[Dict[str, Any]]:
+    """Search for tweets using the provided client."""
     tweets_data = []
     
-    print(f'Searching for: {query}')
-    print(f'Fetching {count} {product} tweets...\n')
+    logger.info(f'Searching for: {query}')
+    logger.info(f'Fetching {count} {product} tweets...')
     
     remaining = max(count, 1)
     batch_index = 0
@@ -28,7 +35,7 @@ async def search(client, query: str, count: int = 10, product: str = 'Top', retr
                     if not getattr(result, 'next_cursor', None):
                         break
                     wait_for = random.uniform(1.2, 2.8)
-                    print(f'Waiting {wait_for:.1f}s before next batch...')
+                    logger.info(f'Waiting {wait_for:.1f}s before next batch...')
                     await asyncio.sleep(wait_for)
                     result = await result.next()
 
@@ -36,7 +43,7 @@ async def search(client, query: str, count: int = 10, product: str = 'Top', retr
                     break
 
                 batch_index += 1
-                print(f'Processing batch {batch_index} (size {len(result)})')
+                logger.info(f'Processing batch {batch_index} (size {len(result)})')
 
                 for tweet in result:
                     if tweet.id in seen_ids:
@@ -56,73 +63,86 @@ async def search(client, query: str, count: int = 10, product: str = 'Top', retr
                         'lang': tweet.lang,
                     }
                     tweets_data.append(data)
-                    print(f'{len(tweets_data)}. @{data["username"]}: {data["text"][:50]}...')
+                    logger.debug(f'{len(tweets_data)}. @{data["username"]}: {data["text"][:50]}...')
 
                 remaining = count - len(tweets_data)
                 if not getattr(result, 'next_cursor', None):
                     break
 
             except TooManyRequests:
-                print(f'Rate limit hit. Waiting {retry_wait} seconds before retrying...')
+                logger.warning(f'Rate limit hit. Waiting {retry_wait} seconds before retrying...')
                 await asyncio.sleep(retry_wait)
                 continue
 
     except NotFound:
-        print('Twitter returned 404 for this search. The query may be restricted or the session expired.')
+        logger.error('Twitter returned 404 for this search. The query may be restricted or the session expired.')
 
-    print(f'\nFetched {len(tweets_data)} tweets')
+    logger.info(f'Fetched {len(tweets_data)} tweets')
     return tweets_data
 
 
 def _get_filename(query: str, ext: str) -> str:
+    """Generate filename for saved tweets."""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    safe_query = ''.join(c if c.isalnum() else '_' for c in query)[:30]
+    safe_query = safe_filename(query)
     return f'tweets_{safe_query}_{timestamp}.{ext}'
 
 
-def csvSave(tweets: list, query: str) -> None:
+def csvSave(tweets: List[Dict[str, Any]], query: str) -> None:
+    """Save tweets to CSV file."""
     if not tweets:
-        print('No tweets to save')
+        logger.warning('No tweets to save')
         return
     
     filename = _get_filename(query, 'csv')
-    with open(filename, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=tweets[0].keys())
-        writer.writeheader()
-        writer.writerows(tweets)
-    print(f'✓ Saved to {filename}')
+    try:
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=tweets[0].keys())
+            writer.writeheader()
+            writer.writerows(tweets)
+        logger.info(f'✓ Saved to {filename}')
+    except Exception as e:
+        logger.error(f'Failed to save CSV: {e}')
 
 
-def jsonSave(tweets: list, query: str) -> None:
+def jsonSave(tweets: List[Dict[str, Any]], query: str) -> None:
+    """Save tweets to JSON file."""
     if not tweets:
-        print('No tweets to save')
+        logger.warning('No tweets to save')
         return
     
     filename = _get_filename(query, 'json')
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(tweets, f, indent=2, ensure_ascii=False, default=str)
-    print(f'✓ Saved to {filename}')
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(tweets, f, indent=2, ensure_ascii=False, default=str)
+        logger.info(f'✓ Saved to {filename}')
+    except Exception as e:
+        logger.error(f'Failed to save JSON: {e}')
 
 
-def xlsxSave(tweets: list, query: str) -> None:
+def xlsxSave(tweets: List[Dict[str, Any]], query: str) -> None:
+    """Save tweets to XLSX file."""
     try:
         import openpyxl
         from openpyxl import Workbook
     except ImportError:
-        print('Error: openpyxl not installed. Install with: pip install openpyxl')
+        logger.error('Error: openpyxl not installed. Install with: pip install openpyxl')
         return
     
     if not tweets:
-        print('No tweets to save')
+        logger.warning('No tweets to save')
         return
     
     filename = _get_filename(query, 'xlsx')
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Tweets'
-    headers = list(tweets[0].keys())
-    ws.append(headers)
-    for tweet in tweets:
-        ws.append(list(tweet.values()))
-    wb.save(filename)
-    print(f'✓ Saved to {filename}')
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Tweets'
+        headers = list(tweets[0].keys())
+        ws.append(headers)
+        for tweet in tweets:
+            ws.append(list(tweet.values()))
+        wb.save(filename)
+        logger.info(f'✓ Saved to {filename}')
+    except Exception as e:
+        logger.error(f'Failed to save XLSX: {e}')

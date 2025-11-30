@@ -1,0 +1,10 @@
+{
+  "default_count": 10,
+  "default_product": "Top",
+  "default_formats": ["csv"],
+  "rate_limit_retry_seconds": 900,
+  "batch_wait_seconds": [1.2, 2.8],
+  "max_query_length": 30,
+  "log_level": "INFO",
+  "sentiment_analyzer": "vader"
+}

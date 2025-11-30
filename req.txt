@@ -1,3 +1,6 @@
 twikit>=2.3.1
 pandas>=2.3.3
 openpyxl>=3.1.5
+textblob>=0.17.1
+vaderSentiment>=3.3.2
+pytest>=7.4.0
