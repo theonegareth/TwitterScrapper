@@ -197,6 +197,9 @@ tmp/
 config.local.json
 secrets.json
 .env.local
+accounts.json
+account_status.json
+cookies_*.json
 
 # Compressed cache files
 *.lz4
